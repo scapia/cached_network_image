@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui show Codec, FrameInfo;
 
 import 'package:flutter/foundation.dart';
@@ -129,8 +130,13 @@ class MultiImageStreamCompleter extends ImageStreamCompleter {
   }
 
   Future<void> _decodeNextFrameAndSchedule() async {
+    final semaphore = SimpleSemaphore();
     try {
-      _nextFrame = await _codec!.getNextFrame();
+      if (Platform.isIOS) {
+        _nextFrame = await semaphore.withPermit(() => _codec!.getNextFrame());
+      } else {
+        _nextFrame = await _codec!.getNextFrame();
+      }
     } on Object catch (exception, stack) {
       reportError(
         context: ErrorDescription('resolving an image frame'),
@@ -234,5 +240,38 @@ class _MultiImageStreamCompleterHandle implements ImageStreamCompleterHandle {
     _completer!.__keepAliveHandles -= 1;
     _completer!.__maybeDispose();
     _completer = null;
+  }
+}
+
+class SimpleSemaphore {
+  SimpleSemaphore._internal();
+
+  factory SimpleSemaphore() => _instance;
+
+  static final SimpleSemaphore _instance = SimpleSemaphore._internal();
+
+  // The GPU task limit on iOS for Flutter v3.29.3 is 64. We set it to 10 to prevent other decoding tasks such as
+  // `Image.asset`, `SvgPicture.asset` from being blocked.
+  static const int _max = 10;
+  static int _current = 0;
+  final List<Completer<void>> _waiters = [];
+
+  Future<T> withPermit<T>(Future<T> Function() action) async {
+    if (_current < _max) {
+      _current = _current + 1;
+      try {
+        return await action();
+      } finally {
+        _current = _current - 1;
+        if (_waiters.isNotEmpty) {
+          _waiters.removeAt(0).complete();
+        }
+      }
+    } else {
+      final completer = Completer<void>();
+      _waiters.add(completer);
+      await completer.future;
+      return withPermit(action);
+    }
   }
 }
