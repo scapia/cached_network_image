@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../cached_network_image_config.dart';
+
 /// Slows down animations by this factor to help in development.
 double get timeDilation => _timeDilation;
 double _timeDilation = 1;
@@ -110,8 +112,7 @@ class MultiImageStreamCompleter extends ImageStreamCompleter {
         _switchToNewCodec();
       } else {
         final completedCycles = _framesEmitted ~/ _codec!.frameCount;
-        if (_codec!.repetitionCount == -1 ||
-            completedCycles <= _codec!.repetitionCount) {
+        if (_codec!.repetitionCount == -1 || completedCycles <= _codec!.repetitionCount) {
           _decodeNextFrameAndSchedule();
         }
       }
@@ -130,9 +131,10 @@ class MultiImageStreamCompleter extends ImageStreamCompleter {
   }
 
   Future<void> _decodeNextFrameAndSchedule() async {
-    final semaphore = SimpleSemaphore();
+    final config = CachedNetworkImageConfig.instance;
     try {
-      if (Platform.isIOS) {
+      if (Platform.isIOS && config.enableIOSDecodeSemaphore) {
+        final semaphore = SimpleSemaphore();
         _nextFrame = await semaphore.withPermit(() => _codec!.getNextFrame());
       } else {
         _nextFrame = await _codec!.getNextFrame();
@@ -202,10 +204,7 @@ class MultiImageStreamCompleter extends ImageStreamCompleter {
   }
 
   void __maybeDispose() {
-    if (!__hadAtLeastOneListener ||
-        __disposed ||
-        hasListeners ||
-        __keepAliveHandles != 0) {
+    if (!__hadAtLeastOneListener || __disposed || hasListeners || __keepAliveHandles != 0) {
       return;
     }
 
@@ -252,7 +251,7 @@ class SimpleSemaphore {
 
   // The GPU task limit on iOS for Flutter v3.29.3 is 64. We set it to 10 to prevent other decoding tasks such as
   // `Image.asset`, `SvgPicture.asset` from being blocked.
-  static const int _max = 10;
+  int get _max => CachedNetworkImageConfig.instance.iosDecodeSemaphoreLimit;
   static int _current = 0;
   final List<Completer<void>> _waiters = [];
 
