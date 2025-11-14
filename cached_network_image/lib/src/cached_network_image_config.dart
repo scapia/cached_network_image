@@ -8,7 +8,7 @@ class CachedNetworkImageConfig {
   /// Shared singleton instance.
   static final CachedNetworkImageConfig instance = CachedNetworkImageConfig._();
 
-  bool _enableIOSDecodeSemaphore = true;
+  bool _enableIOSDecodeSemaphore = false;
   int _iosDecodeSemaphoreLimit = 10;
 
   /// Whether to run iOS frame decoding through a semaphore to avoid GPU
